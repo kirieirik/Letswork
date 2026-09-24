@@ -17,6 +17,7 @@ export type DatabaseTask = {
   assignee_id: string | null;
   created_by: string;
   due_date: string | null;
+  progress: number;
   status: TaskStatus;
   created_at: string;
   updated_at: string;
@@ -24,4 +25,14 @@ export type DatabaseTask = {
   completed_by: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
+};
+
+export type DatabaseTaskUpdate = {
+  id: string;
+  organization_id: string;
+  task_id: string;
+  author_id: string;
+  progress: number;
+  body: string;
+  created_at: string;
 };

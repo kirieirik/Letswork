@@ -215,5 +215,6 @@ Any later feature should preserve the simple shared-list workflow and organizati
 - Use Supabase directly from the browser for the first version because RLS provides the authorization boundary and Realtime is required.
 - Keep due dates as calendar dates.
 - Preserve completed and deleted rows for auditability.
+- Track partial work as task progress plus timestamped updates; keep completion as an explicit audited transition.
 - Prefer small explicit views and list rows over project-management abstractions.
 - Keep demo mode because it makes local UI work and browser tests deterministic without touching production data.

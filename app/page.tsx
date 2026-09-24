@@ -22,7 +22,7 @@ import {
 import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase";
-import type { DatabaseTask, Profile } from "@/lib/types";
+import type { DatabaseTask, DatabaseTaskUpdate, Profile } from "@/lib/types";
 import { filterTasks, getTaskCounts, isTaskOverdue } from "@/lib/task-utils";
 
 type Status = "open" | "completed";
@@ -34,6 +34,7 @@ type Task = {
   description: string;
   assigneeId: string | null;
   dueDate: string | null;
+  progress: number;
   status: Status;
   createdAt: string;
   createdBy: string;
@@ -41,6 +42,7 @@ type Task = {
   completedBy: string | null;
   deletedAt: string | null;
 };
+type TaskUpdate = { id: string; taskId: string; authorId: string; progress: number; body: string; createdAt: string };
 
 const people: Person[] = [
   { id: "emma", name: "Emma Johansson", initials: "EJ", color: "#e9d5ff" },
@@ -58,13 +60,13 @@ const isoDate = (offset: number) => {
   return date.toISOString().slice(0, 10);
 };
 const seedTasks: Task[] = [
-  { id: "1", title: "Prepare monthly report", description: "Complete the latest sales figures and prepare a short summary for management.", assigneeId: "emma", dueDate: isoDate(0), status: "open", createdAt: "2026-09-20T09:00:00Z", createdBy: "anders", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "2", title: "Update website content", description: "Refresh the services page with the new copy from marketing.", assigneeId: "lars", dueDate: isoDate(4), status: "open", createdAt: "2026-09-21T10:00:00Z", createdBy: "emma", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "3", title: "Order office supplies", description: "Check the storage room and order printer paper, coffee, and pens.", assigneeId: "sofie", dueDate: null, status: "open", createdAt: "2026-09-19T08:30:00Z", createdBy: "maria", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "4", title: "Plan team meeting", description: "Find a time that works for everyone and prepare an agenda.", assigneeId: "emma", dueDate: isoDate(8), status: "open", createdAt: "2026-09-18T11:00:00Z", createdBy: "emma", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "5", title: "Review safety procedures", description: "Read through the updated office safety procedures.", assigneeId: "anders", dueDate: isoDate(-2), status: "open", createdAt: "2026-09-17T14:30:00Z", createdBy: "lars", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "6", title: "Client follow-up emails", description: "Follow up with the three clients from last week's meeting.", assigneeId: null, dueDate: null, status: "open", createdAt: "2026-09-16T12:00:00Z", createdBy: "maria", completedAt: null, completedBy: null, deletedAt: null },
-  { id: "7", title: "Archive Q2 invoices", description: "Move signed invoices into the shared archive.", assigneeId: "maria", dueDate: isoDate(-4), status: "completed", createdAt: "2026-09-10T12:00:00Z", createdBy: "emma", completedAt: "2026-09-22T14:32:00Z", completedBy: "maria", deletedAt: null },
+  { id: "1", title: "Prepare monthly report", description: "Complete the latest sales figures and prepare a short summary for management.", assigneeId: "emma", dueDate: isoDate(0), progress: 0, status: "open", createdAt: "2026-09-20T09:00:00Z", createdBy: "anders", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "2", title: "Update website content", description: "Refresh the services page with the new copy from marketing.", assigneeId: "lars", dueDate: isoDate(4), progress: 0, status: "open", createdAt: "2026-09-21T10:00:00Z", createdBy: "emma", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "3", title: "Order office supplies", description: "Check the storage room and order printer paper, coffee, and pens.", assigneeId: "sofie", dueDate: null, progress: 0, status: "open", createdAt: "2026-09-19T08:30:00Z", createdBy: "maria", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "4", title: "Plan team meeting", description: "Find a time that works for everyone and prepare an agenda.", assigneeId: "emma", dueDate: isoDate(8), progress: 0, status: "open", createdAt: "2026-09-18T11:00:00Z", createdBy: "emma", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "5", title: "Review safety procedures", description: "Read through the updated office safety procedures.", assigneeId: "anders", dueDate: isoDate(-2), progress: 0, status: "open", createdAt: "2026-09-17T14:30:00Z", createdBy: "lars", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "6", title: "Client follow-up emails", description: "Follow up with the three clients from last week's meeting.", assigneeId: null, dueDate: null, progress: 0, status: "open", createdAt: "2026-09-16T12:00:00Z", createdBy: "maria", completedAt: null, completedBy: null, deletedAt: null },
+  { id: "7", title: "Archive Q2 invoices", description: "Move signed invoices into the shared archive.", assigneeId: "maria", dueDate: isoDate(-4), progress: 100, status: "completed", createdAt: "2026-09-10T12:00:00Z", createdBy: "emma", completedAt: "2026-09-22T14:32:00Z", completedBy: "maria", deletedAt: null },
 ];
 
 const formatDate = (value: string | null) => {
@@ -75,7 +77,8 @@ const formatDate = (value: string | null) => {
 const isToday = (value: string | null) => value === today.toISOString().slice(0, 10);
 const personFor = (id: string | null, roster: Person[] = people) => roster.find((person) => person.id === id);
 const profileToPerson = (profile: Profile): Person => ({ id: profile.id, name: profile.full_name, email: profile.email, initials: profile.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), color: "#dbe4ff" });
-const rowToTask = (row: DatabaseTask): Task => ({ id: row.id, title: row.title, description: row.description, assigneeId: row.assignee_id, dueDate: row.due_date, status: row.status, createdAt: row.created_at, createdBy: row.created_by, completedAt: row.completed_at, completedBy: row.completed_by, deletedAt: row.deleted_at });
+const rowToTask = (row: DatabaseTask): Task => ({ id: row.id, title: row.title, description: row.description, assigneeId: row.assignee_id, dueDate: row.due_date, progress: row.progress ?? (row.status === "completed" ? 100 : 0), status: row.status, createdAt: row.created_at, createdBy: row.created_by, completedAt: row.completed_at, completedBy: row.completed_by, deletedAt: row.deleted_at });
+const rowToTaskUpdate = (row: DatabaseTaskUpdate): TaskUpdate => ({ id: row.id, taskId: row.task_id, authorId: row.author_id, progress: row.progress, body: row.body, createdAt: row.created_at });
 
 export default function Home() {
     const router = useRouter();
@@ -98,6 +101,7 @@ export default function Home() {
   const [authReady, setAuthReady] = useState(false);
   const [remoteMode, setRemoteMode] = useState<boolean | null>(null);
   const [dataError, setDataError] = useState("");
+  const [taskUpdates, setTaskUpdates] = useState<Record<string, TaskUpdate[]>>({});
   const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
   const notify = (message: string, kind: "success" | "error" = "success") => {
     setToast({ message, kind });
@@ -125,6 +129,7 @@ export default function Home() {
     if (!supabase) return;
     let mounted = true;
     let taskChannel: ReturnType<typeof supabase.channel> | undefined;
+    let updateChannel: ReturnType<typeof supabase.channel> | undefined;
     const loadRemoteData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!mounted) return;
@@ -155,15 +160,33 @@ export default function Home() {
           return current;
         });
       }).subscribe();
+      updateChannel = supabase.channel(`task-updates:${currentProfile.organization_id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "task_updates", filter: `organization_id=eq.${currentProfile.organization_id}` }, (payload) => {
+        if (!mounted) return;
+        const incomingUpdate = rowToTaskUpdate(payload.new as DatabaseTaskUpdate);
+        setTaskUpdates((current) => {
+          const existing = current[incomingUpdate.taskId] ?? [];
+          if (existing.some((update) => update.id === incomingUpdate.id)) return current;
+          return { ...current, [incomingUpdate.taskId]: [incomingUpdate, ...existing] };
+        });
+      }).subscribe();
       setAuthReady(true);
     };
     loadRemoteData().catch((error: Error) => { if (mounted) { setDataError(error.message); setAuthReady(true); } });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setAuthUserId(session?.user.id ?? null));
-    return () => { mounted = false; listener.subscription.unsubscribe(); if (taskChannel) void supabase.removeChannel(taskChannel); };
+    return () => { mounted = false; listener.subscription.unsubscribe(); if (taskChannel) void supabase.removeChannel(taskChannel); if (updateChannel) void supabase.removeChannel(updateChannel); };
   }, []);
   useEffect(() => {
     if (remoteMode !== true) window.localStorage.setItem("company-tasks", JSON.stringify(tasks));
   }, [tasks, remoteMode]);
+  useEffect(() => {
+    if (!selectedId || remoteMode !== true) return;
+    const supabase = createClient();
+    if (!supabase) return;
+    supabase.from("task_updates").select("*").eq("task_id", selectedId).order("created_at", { ascending: false }).then(({ data, error }) => {
+      if (error) notify(error.message, "error");
+      else if (data) setTaskUpdates((current) => ({ ...current, [selectedId]: (data as DatabaseTaskUpdate[]).map(rowToTaskUpdate) }));
+    });
+  }, [selectedId, remoteMode]);
 
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
   const visibleTasks = useMemo(() => filterTasks(tasks, view === "people" ? "all" : view, query, actorId, roster, today), [tasks, view, query, actorId, roster]);
@@ -176,7 +199,7 @@ export default function Home() {
   const updateTask = async (changes: Partial<Task>, successMessage?: string) => {
     if (!selected) return false;
     if (remoteMode) {
-      const payload: Record<string, string | null> = { updated_at: new Date().toISOString() };
+      const payload: Record<string, string | number | null> = { updated_at: new Date().toISOString() };
       if ("title" in changes) payload.title = changes.title ?? null;
       if ("description" in changes) payload.description = changes.description ?? null;
       if ("assigneeId" in changes) payload.assignee_id = changes.assigneeId ?? null;
@@ -184,12 +207,27 @@ export default function Home() {
       if ("status" in changes) payload.status = changes.status ?? null;
       if ("completedAt" in changes) payload.completed_at = changes.completedAt ?? null;
       if ("completedBy" in changes) payload.completed_by = changes.completedBy ?? null;
+      if ("progress" in changes) payload.progress = changes.progress ?? null;
       if ("deletedAt" in changes) payload.deleted_at = changes.deletedAt ?? null;
       const { error } = await createClient()!.from("tasks").update(payload).eq("id", selected.id);
       if (error) { setDataError(error.message); notify(error.message, "error"); return false; }
     }
     setTasks((current) => current.map((task) => task.id === selected.id ? { ...task, ...changes, updatedAt: new Date().toISOString() } as Task : task));
     if (successMessage) notify(successMessage);
+    return true;
+  };
+  const addTaskUpdate = async (body: string, progress: number) => {
+    if (!selected || !body.trim()) return false;
+    if (remoteMode === true) {
+      const { data, error } = await createClient()!.from("task_updates").insert({ organization_id: organizationId, task_id: selected.id, author_id: actorId, progress, body: body.trim() }).select().single();
+      if (error || !data) { notify(error?.message ?? "Could not save update.", "error"); return false; }
+      const saved = rowToTaskUpdate(data as DatabaseTaskUpdate);
+      setTaskUpdates((current) => ({ ...current, [selected.id]: [saved, ...(current[selected.id] ?? [])] }));
+    } else {
+      const saved = { id: crypto.randomUUID(), taskId: selected.id, authorId: actorId, progress, body: body.trim(), createdAt: new Date().toISOString() };
+      setTaskUpdates((current) => ({ ...current, [selected.id]: [saved, ...(current[selected.id] ?? [])] }));
+    }
+    notify("Update added");
     return true;
   };
   const navItems: { id: View; label: string; icon: typeof LayoutList; count?: number }[] = [
@@ -221,10 +259,10 @@ export default function Home() {
         <div className="mobile-tabs">{navItems.slice(0, 4).map(({ id, label }) => <button className={view === id ? "active" : ""} key={id} onClick={() => setView(id)}>{label}</button>)}</div>
         {view === "people" ? <PeoplePanel roster={roster} assignedCounts={assignedCounts} /> : <div className="list-wrap"><div className="list-heading"><div><h2>{view === "completed" ? "Completed tasks" : "Open tasks"}</h2><p>{visibleTasks.length} {visibleTasks.length === 1 ? "task" : "tasks"} {query ? "matching your search" : "in this view"}</p></div><button className="filter-button"><Archive size={15} /> Filter <ChevronDown size={14} /></button></div><div className="task-list">{visibleTasks.map((task) => <TaskRow key={task.id} task={task} roster={roster} onSelect={() => { setSelectedId(task.id); setEditing(false); }} onComplete={() => { setSelectedId(task.id); setDialog("complete"); }} />)}{visibleTasks.length === 0 && <div className="empty"><span className="empty-icon"><Search size={21} /></span><h3>{query ? "No tasks found" : "Nothing here yet"}</h3><p>{query ? "Try a different title, description, or assignee." : "Create a task to get the team moving."}</p>{!query && <button className="primary-button" onClick={() => setDialog("create")}><Plus size={17} /> New task</button>}</div>}</div></div>}
       </section>
-      {selected && <TaskDetails task={selected} roster={roster} editing={editing} setEditing={setEditing} onClose={() => setSelectedId(null)} onUpdate={updateTask} onDelete={() => setDialog("delete")} onComplete={() => setDialog("complete")} />}
+      {selected && <TaskDetails task={selected} roster={roster} updates={taskUpdates[selected.id] ?? []} editing={editing} setEditing={setEditing} onClose={() => setSelectedId(null)} onUpdate={updateTask} onAddUpdate={addTaskUpdate} onDelete={() => setDialog("delete")} onComplete={() => setDialog("complete")} />}
       {toast && <div className={`toast ${toast.kind}`} role="status">{toast.message}</div>}
       {dialog === "create" && <TaskForm roster={roster} actorId={actorId} organizationId={organizationId} remoteMode={remoteMode === true} onClose={() => setDialog(null)} onError={(message) => notify(message, "error")} onCreate={(task) => { setTasks((current) => [task, ...current]); setDialog(null); notify("Task created"); }} />}
-      {dialog === "complete" && selected && <ConfirmDialog title="Close task?" message="Do you really want to mark this task as completed?" confirm="Yes, mark as completed" onClose={() => setDialog(null)} onConfirm={async () => { if (await updateTask({ status: "completed", completedAt: new Date().toISOString(), completedBy: actorId }, "Task completed")) { setDialog(null); setSelectedId(null); } }} />}
+      {dialog === "complete" && selected && <ConfirmDialog title="Close task?" message="Do you really want to mark this task as completed?" confirm="Yes, mark as completed" onClose={() => setDialog(null)} onConfirm={async () => { if (await updateTask({ status: "completed", progress: 100, completedAt: new Date().toISOString(), completedBy: actorId }, "Task completed")) { setDialog(null); setSelectedId(null); } }} />}
       {dialog === "delete" && selected && <ConfirmDialog title="Delete task?" message="This task will be hidden from the workspace, but its record will be kept." confirm="Delete task" destructive onClose={() => setDialog(null)} onConfirm={async () => { if (await updateTask({ deletedAt: new Date().toISOString() }, "Task deleted")) { setDialog(null); setSelectedId(null); } }} />}
     </main>
   );
@@ -239,9 +277,18 @@ function TaskRow({ task, roster, onSelect, onComplete }: { task: Task; roster: P
   return <div className="task-row"><button className={`task-check ${task.status === "completed" ? "checked" : ""}`} onClick={onComplete} aria-label={`Complete ${task.title}`}>{task.status === "completed" && <Check size={13} />}</button><button className="task-main" onClick={onSelect}><strong>{task.title}</strong>{task.description && <span>{task.description}</span>}</button><div className="assignee">{person ? <><span className="avatar small" style={{ background: person.color }}>{person.initials}</span><span>{person.name.split(" ")[0]}</span></> : <span className="unassigned">Unassigned</span>}</div><div className={`due-date ${isTaskOverdue(task, today) ? "overdue" : ""} ${isToday(task.dueDate) ? "today" : ""}`}>{task.dueDate && <CalendarDays size={14} />}{task.dueDate ? isToday(task.dueDate) ? "Today" : formatDate(task.dueDate) : "—"}</div></div>;
 }
 
-function TaskDetails({ task, roster, editing, setEditing, onClose, onUpdate, onDelete, onComplete }: { task: Task; roster: Person[]; editing: boolean; setEditing: (value: boolean) => void; onClose: () => void; onUpdate: (changes: Partial<Task>, successMessage?: string) => Promise<boolean>; onDelete: () => void; onComplete: () => void }) {
+function TaskDetails({ task, roster, updates, editing, setEditing, onClose, onUpdate, onAddUpdate, onDelete, onComplete }: { task: Task; roster: Person[]; updates: TaskUpdate[]; editing: boolean; setEditing: (value: boolean) => void; onClose: () => void; onUpdate: (changes: Partial<Task>, successMessage?: string) => Promise<boolean>; onAddUpdate: (body: string, progress: number) => Promise<boolean>; onDelete: () => void; onComplete: () => void }) {
   const person = personFor(task.assigneeId, roster);
-  return <aside className="details-panel"><div className="details-top"><span className="eyebrow">Task details</span><button className="icon-button" onClick={onClose} aria-label="Close details"><X size={19} /></button></div>{editing ? <EditFields task={task} roster={roster} onUpdate={onUpdate} onDone={() => setEditing(false)} /> : <><div className="details-title"><button className={`task-check large ${task.status === "completed" ? "checked" : ""}`} onClick={onComplete}>{task.status === "completed" && <Check size={15} />}</button><h2>{task.title}</h2></div><div className="detail-meta"><div><span>Assigned to</span><strong>{person ? <><span className="avatar small" style={{ background: person.color }}>{person.initials}</span>{person.name}</> : "Unassigned"}</strong></div><div><span>Due date</span><strong className={isTaskOverdue(task, today) ? "text-overdue" : ""}>{formatDate(task.dueDate)}</strong></div></div><div className="description"><span>Description</span><p>{task.description || "No description added."}</p></div>{task.status === "completed" && <div className="completion-note"><Check size={16} /><span>Completed {task.completedAt ? new Date(task.completedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}{task.completedBy ? ` by ${personFor(task.completedBy, roster)?.name ?? "a team member"}` : ""}</span></div>}<div className="audit"><p>Created by {personFor(task.createdBy, roster)?.name ?? "team member"}</p><p>{new Date(task.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p></div><div className="details-actions">{task.status === "open" && <button className="secondary-button" onClick={() => setEditing(true)}>Edit task</button>}<button className="danger-button" onClick={onDelete}><Trash2 size={15} /> Delete</button></div></>}</aside>;
+  return <aside className="details-panel"><div className="details-top"><span className="eyebrow">Task details</span><button className="icon-button" onClick={onClose} aria-label="Close details"><X size={19} /></button></div>{editing ? <EditFields task={task} roster={roster} onUpdate={onUpdate} onDone={() => setEditing(false)} /> : <><div className="details-title"><button className={`task-check large ${task.status === "completed" ? "checked" : ""}`} onClick={onComplete}>{task.status === "completed" && <Check size={15} />}</button><h2>{task.title}</h2></div><div className="detail-meta"><div><span>Assigned to</span><strong>{person ? <><span className="avatar small" style={{ background: person.color }}>{person.initials}</span>{person.name}</> : "Unassigned"}</strong></div><div><span>Due date</span><strong className={isTaskOverdue(task, today) ? "text-overdue" : ""}>{formatDate(task.dueDate)}</strong></div></div><div className="description"><span>Description</span><p>{task.description || "No description added."}</p></div>{task.status === "completed" && <div className="completion-note"><Check size={16} /><span>Completed {task.completedAt ? new Date(task.completedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}{task.completedBy ? ` by ${personFor(task.completedBy, roster)?.name ?? "a team member"}` : ""}</span></div>}<div className="audit"><p>Created by {personFor(task.createdBy, roster)?.name ?? "team member"}</p><p>{new Date(task.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p></div><div className="details-actions">{task.status === "open" && <button className="secondary-button" onClick={() => setEditing(true)}>Edit task</button>}<button className="danger-button" onClick={onDelete}><Trash2 size={15} /> Delete</button></div></>}<ProgressPanel task={task} roster={roster} updates={updates} onUpdate={onUpdate} onAddUpdate={onAddUpdate} /></aside>;
+}
+
+function ProgressPanel({ task, roster, updates, onUpdate, onAddUpdate }: { task: Task; roster: Person[]; updates: TaskUpdate[]; onUpdate: (changes: Partial<Task>, successMessage?: string) => Promise<boolean>; onAddUpdate: (body: string, progress: number) => Promise<boolean> }) {
+  const [progress, setProgress] = useState(task.progress);
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const saveProgress = async () => { setSaving(true); await onUpdate({ progress }, "Progress updated"); setSaving(false); };
+  const submitUpdate = async (event: FormEvent) => { event.preventDefault(); if (!body.trim() || saving) return; setSaving(true); const saved = await onAddUpdate(body, progress); setSaving(false); if (saved) setBody(""); };
+  return <section className="progress-panel"><div className="progress-heading"><span>Progress</span><strong>{progress}%</strong></div><input className="progress-slider" type="range" min="0" max="99" value={Math.min(progress, 99)} onChange={(event) => setProgress(Number(event.target.value))} aria-label="Task progress" /><button className="secondary-button progress-save" disabled={saving || progress === task.progress || task.status === "completed"} onClick={saveProgress}>{saving ? "Saving..." : "Save progress"}</button><form className="update-form" onSubmit={submitUpdate}><label>Add an update<textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} placeholder="What changed?" /></label><button className="primary-button" disabled={saving || !body.trim()}>{saving ? "Adding..." : "Add update"}</button></form>{updates.length > 0 && <div className="update-history"><span className="update-label">Update history</span>{updates.map((update) => <article className="update-item" key={update.id}><div><strong>{personFor(update.authorId, roster)?.name ?? "Team member"}</strong><time>{new Date(update.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</time></div><p>{update.body}</p><small>{update.progress}% complete</small></article>)}</div>}</section>;
 }
 
 function EditFields({ task, roster, onUpdate, onDone }: { task: Task; roster: Person[]; onUpdate: (changes: Partial<Task>, successMessage?: string) => Promise<boolean>; onDone: () => void }) {
@@ -254,7 +301,7 @@ function EditFields({ task, roster, onUpdate, onDone }: { task: Task; roster: Pe
 function TaskForm({ roster, actorId, organizationId, remoteMode, onClose, onError, onCreate }: { roster: Person[]; actorId: string; organizationId: string | null; remoteMode: boolean; onClose: () => void; onError: (message: string) => void; onCreate: (task: Task) => void }) {
   const [title, setTitle] = useState(""); const [description, setDescription] = useState(""); const [assigneeId, setAssigneeId] = useState(""); const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); if (!title.trim() || saving) return; setSaving(true); const task: Task = { id: crypto.randomUUID(), title: title.trim(), description, assigneeId: assigneeId || null, dueDate: dueDate || null, status: "open", createdAt: new Date().toISOString(), createdBy: actorId, completedAt: null, completedBy: null, deletedAt: null }; if (remoteMode && organizationId) { const { data, error } = await createClient()!.from("tasks").insert({ organization_id: organizationId, title: task.title, description: task.description, assignee_id: task.assigneeId, created_by: actorId, due_date: task.dueDate }).select().single(); if (error || !data) { onError(error?.message ?? "Could not create task."); setSaving(false); return; } onCreate(rowToTask(data as DatabaseTask)); } else onCreate(task); setSaving(false); };
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (!title.trim() || saving) return; setSaving(true); const task: Task = { id: crypto.randomUUID(), title: title.trim(), description, assigneeId: assigneeId || null, dueDate: dueDate || null, progress: 0, status: "open", createdAt: new Date().toISOString(), createdBy: actorId, completedAt: null, completedBy: null, deletedAt: null }; if (remoteMode && organizationId) { const { data, error } = await createClient()!.from("tasks").insert({ organization_id: organizationId, title: task.title, description: task.description, assignee_id: task.assigneeId, created_by: actorId, due_date: task.dueDate, progress: 0 }).select().single(); if (error || !data) { onError(error?.message ?? "Could not create task."); setSaving(false); return; } onCreate(rowToTask(data as DatabaseTask)); } else onCreate(task); setSaving(false); };
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-header"><div><span className="eyebrow">New task</span><h2>Create a task</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={19} /></button></div><label>Task title <span className="required">Required</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Prepare monthly report" /></label><label>Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="Add a little context for your team..." /></label><div className="form-grid"><label>Assignee<select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="">Unassigned</option>{roster.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select></label><label>Due date<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label></div><div className="form-actions"><button type="button" className="secondary-button" disabled={saving} onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving || !title.trim()}><Plus size={16} /> {saving ? "Creating..." : "Create task"}</button></div></form></div>;
 }
 

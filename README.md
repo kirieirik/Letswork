@@ -23,11 +23,11 @@ Open `http://localhost:3000`. Other checks are available with `npm run test`, `n
 
 1. Create a Supabase project and enable email/password authentication.
 2. Copy `.env.example` to `.env.local` and fill in the project URL and browser-safe anon key.
-3. Run the migration in the Supabase SQL editor or with the Supabase CLI.
+3. Run `0001_company_tasks.sql` and then `0002_task_progress_updates.sql` in the Supabase SQL editor or with the Supabase CLI.
 4. Create an organization and profiles for the Auth users. Each profile's `id` must match its `auth.users.id`.
 5. Keep service-role credentials server-side only; never put them in `.env.local` values prefixed with `NEXT_PUBLIC_`.
 
-The migration enables RLS and scopes all organization data through the authenticated user's active profile. Tasks are soft-deleted and completion stores both the actor and exact UTC timestamp.
+The migrations enable RLS and scope all organization data through the authenticated user's active profile. Tasks are soft-deleted and completion stores both the actor and exact UTC timestamp. The second migration adds 0-99% progress and an auditable task update/comment history; 100% completion still requires the normal confirmation flow.
 
 The browser client is available in `lib/supabase.ts` and deliberately returns `null` when the environment variables are absent, so local demo mode remains available while the project is being configured.
 
