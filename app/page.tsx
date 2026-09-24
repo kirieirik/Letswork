@@ -98,6 +98,7 @@ export default function Home() {
   const [actorId, setActorId] = useState(currentUser.id);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState("Creative Co.");
   const [authReady, setAuthReady] = useState(false);
   const [remoteMode, setRemoteMode] = useState<boolean | null>(null);
   const [dataError, setDataError] = useState("");
@@ -139,6 +140,8 @@ export default function Home() {
       const { data: currentProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
       if (profileError || !currentProfile) { setDataError(profileError?.message ?? "Your profile is not set up yet."); setAuthReady(true); return; }
       setOrganizationId(currentProfile.organization_id);
+      const { data: organization } = await supabase.from("organizations").select("name").eq("id", currentProfile.organization_id).single();
+      if (organization?.name) setOrganizationName(organization.name);
       setActivePerson(profileToPerson(currentProfile as Profile));
       const [{ data: profiles, error: profilesError }, { data: remoteTasks, error: tasksError }] = await Promise.all([
         supabase.from("profiles").select("*").eq("organization_id", currentProfile.organization_id).eq("active", true).order("full_name"),
@@ -246,7 +249,7 @@ export default function Home() {
     <main className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand"><span className="brand-mark"><Check size={17} strokeWidth={3} /></span><span>Company Tasks</span></div>
-        <div className="workspace-switcher"><span className="workspace-dot">C</span><span><strong>Creative Co.</strong><small>Company workspace</small></span><ChevronDown size={15} /></div>
+        <div className="workspace-switcher"><span className="workspace-dot">{organizationName.charAt(0).toUpperCase()}</span><span><strong>{organizationName}</strong><small>Company workspace</small></span><ChevronDown size={15} /></div>
         <nav aria-label="Task views">
           <p className="nav-label">Workspace</p>
           {navItems.map(({ id, label, icon: Icon, count }) => <button className={`nav-item ${view === id ? "active" : ""}`} key={id} onClick={() => { setView(id); setMobileNav(false); }}><Icon size={17} /><span>{label}</span>{count ? <b>{count}</b> : null}</button>)}
