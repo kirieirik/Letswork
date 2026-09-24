@@ -1,0 +1,6 @@
+.task-row { grid-template-columns: 27px minmax(180px, 1fr) 150px 100px 105px; }
+.task-progress { min-width: 0; display: flex; align-items: center; gap: 8px; color: #7c88a0; font-size: 11px; }
+.progress-track { display: block; height: 5px; flex: 1; min-width: 28px; overflow: hidden; border-radius: 999px; background: #e8ebf2; }
+.progress-track span { display: block; height: 100%; border-radius: inherit; background: #5b76e8; }
+@media (max-width: 1050px) { .task-row { grid-template-columns: 27px minmax(150px, 1fr) 125px 90px 85px; } }
+@media (max-width: 760px) { .task-row { grid-template-columns: 25px minmax(0, 1fr) auto; }.task-progress { grid-column: 2; grid-row: 3; width: min(170px, 100%); margin-top: -3px; font-size: 10px; }.progress-track { min-width: 80px; }.due-date { grid-row: 1 / span 3; } }
