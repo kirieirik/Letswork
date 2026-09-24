@@ -190,6 +190,24 @@ export default function Home() {
       else if (data) setTaskUpdates((current) => ({ ...current, [selectedId]: (data as DatabaseTaskUpdate[]).map(rowToTaskUpdate) }));
     });
   }, [selectedId, remoteMode]);
+  useEffect(() => {
+    if (remoteMode !== true || !organizationId) return;
+    const supabase = createClient();
+    if (!supabase) return;
+    const refreshRemoteState = async () => {
+      const [{ data: remoteTasks }, { data: remoteUpdates }] = await Promise.all([
+        supabase.from("tasks").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+        selectedId ? supabase.from("task_updates").select("*").eq("task_id", selectedId).order("created_at", { ascending: false }) : Promise.resolve({ data: null }),
+      ]);
+      if (remoteTasks) setTasks((remoteTasks as DatabaseTask[]).map(rowToTask));
+      if (selectedId && remoteUpdates) setTaskUpdates((current) => ({ ...current, [selectedId]: (remoteUpdates as DatabaseTaskUpdate[]).map(rowToTaskUpdate) }));
+    };
+    const handleResume = () => { if (document.visibilityState === "visible") void refreshRemoteState(); };
+    window.addEventListener("focus", handleResume);
+    window.addEventListener("pageshow", handleResume);
+    document.addEventListener("visibilitychange", handleResume);
+    return () => { window.removeEventListener("focus", handleResume); window.removeEventListener("pageshow", handleResume); document.removeEventListener("visibilitychange", handleResume); };
+  }, [organizationId, remoteMode, selectedId]);
 
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
   const visibleTasks = useMemo(() => filterTasks(tasks, view === "people" ? "all" : view, query, actorId, roster, today), [tasks, view, query, actorId, roster]);
